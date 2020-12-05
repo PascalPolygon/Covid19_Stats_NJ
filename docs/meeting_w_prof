@@ -1,0 +1,6 @@
+Time as rv
+Cumulative number of cases is CDF
+For PMF look at the number of cases seperately. Difference between 2 consecutive values of 
+You don't have to find mean and variance. Just finding the PMF, but extra credit if you do mean and variance and use some estimation method to estimate teh distibution.
+
+Only condider number of cases at the end of october for correlation.

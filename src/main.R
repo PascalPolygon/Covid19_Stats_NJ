@@ -1,0 +1,187 @@
+##########################################################
+# MTH5411
+# Florida Institute of Technology
+# Dec 4, 2020
+# Project R Script
+# Group 1: Mawaba Pascal Dao, Tarique Alam
+# Sate: New Jersey
+##########################################################
+
+library(ggplot2)
+library(readxl)
+library("data.table")
+library(survival)
+library(tinytex)
+
+setwd(getwd())
+
+# Loading the data
+cov19State = read.table("../data/us-states.csv",sep = ',',header=T)
+cov19County = read.table("../data/us-counties.csv",sep = ',',header=T,quote = "")
+nj = cov19State[which(cov19State$state == "New Jersey"),]
+nj_counties = cov19County[which(cov19County$state == "New Jersey"),]
+students = read.table("../data/ElementarySecondary.csv",sep = ',',header=T,quote="")
+# income data: https://www.nj.gov/labor/lpa/industry/incpov/2010income.html
+income <- read_excel("../data/Income_Dist3.xls")
+# climate data: https://www.ncdc.noaa.gov/cag/county/mapping/28/tavg/202010/9/value
+climateData = read.table("../data28-tavg-202010-9.csv",skip=3,sep = ',',header=T)
+
+print('################################################################')
+print('####################### TASK I #################################')
+print('################################################################')
+
+new_cases <-c(); #Empty vector to contain conseq case diff
+new_deaths <-c();
+
+for (i in 1:(length(nj$cases))) {
+  num_new_cases = nj$cases[i+1] - nj$cases[i];
+  new_cases <- c(new_cases, num_new_cases);
+  
+  num_new_deaths = nj$deaths[i+1] - nj$deaths[i];
+  new_deaths <- c(new_deaths, num_new_deaths);
+}
+
+par(mfrow=c(3,3))
+nc_sum = sum(new_cases[1:242])
+nd_sum = sum(new_deaths[1:242])
+
+# Distribution for cases
+barplot(nj$cases/nc_sum, names.arg=nj$date, ylab="P(X <= x)", las=2,main="CDF of # of cases")
+barplot(new_cases/nc_sum, names.arg=nj$date, ylab="P(X <= x)", las=2,main="PMF of # of cases")
+
+# Distribution for deaths
+nd_sum = sum(new_deaths[1:242])
+barplot(nj$deaths/nd_sum, names.arg=nj$date, ylab="P(X <= x)" , las=2, main="CDF of # of deaths")
+barplot(new_deaths/nd_sum, names.arg=nj$date, ylab="P(X = x)", las=2, main="PMF of # of deaths")
+
+d <- density(new_cases[1:242], bw="SJ", kernel = "gaussian") # returns the density data
+plot(d) # plots the results
+print("KDE Results:")
+print(d)
+
+print('################################################################')
+print('####################### TASK II ################################')
+print('################################################################')
+
+print('####################### Students Correlation ###################')
+counties = nj_counties[,2]
+counties = unique(counties) #Remove duplicates
+counties = sort(counties)
+counties = counties[counties!="Unknown"] #Remove bad samples
+num_counties = length(counties)
+county_cases <- array(numeric(),c(num_counties,1))
+county_deaths <- array(numeric(),c(num_counties,1))
+county_students <- array(numeric(),c(num_counties,1))
+
+for (i in 1:num_counties){
+  ctn = nj_counties[which(nj_counties$county == counties[i]),];
+  fips = ctn$fips[1]
+  dates_arr = ctn[,1]
+  end_oct = match("2020-10-31", dates_arr) #Only interested in cases by end of OCt
+  last_row = dim(ctn)[1];
+  fips_i = match(fips, students$FIPS) #Match Fips
+  county_cases[i] = ctn$cases[end_oct];
+  county_deaths[i] = ctn$deaths[end_oct]
+  county_students[i] = students$EDU_PESS_Students[fips_i]
+}
+
+CovidDataNJ = data.frame(county = counties, students = county_students, cases_by_Oct = county_cases, deaths_by_Oct = county_deaths, stringsAsFactors = FALSE);
+corCSNJ = cor(CovidDataNJ$cases_by_Oct,CovidDataNJ$students)
+corDSNJ = cor(CovidDataNJ$deaths_by_Oct,CovidDataNJ$students)
+print("Cases Students correlation:");
+print(corCSNJ)
+print("Deaths Students correlation:");
+print(corDSNJ)
+
+print('####################### Income Correlation ###################')
+avgIncomes <-c();
+for (i in 3:23){
+  county = income[2,i]
+  county = strsplit(toString(county), " ",1)[[1]][1]
+  if (county == "Cape"){
+    county = "Cape May"
+  }
+  counties[i-2] = county
+  meanIncome = income[65,i]
+  avgIncomes[i-2] = strtoi(meanIncome)
+}
+# 
+incomeData = data.frame(county = counties, avgIncome = avgIncomes,
+                        stringsAsFactors = FALSE)
+CovidDataNJ$avgIncome_2010 = incomeData$avgIncome;
+corCINJ = cor(CovidDataNJ$cases_by_Oct,CovidDataNJ$avgIncome_2010) 
+corDINJ = cor(CovidDataNJ$deaths_by_Oct,CovidDataNJ$avgIncome_2010)
+# CovidDataNJ
+print("Cases Income correlation:");
+print(corCINJ)
+print("Deaths Income correlation:");
+print(corDINJ)
+print("###############################################################")
+
+print('####################### Climate Correlation ###################')
+CovidDataNJ$avgTemp_Jan2Sep = climateData$Value
+corCTNJ = cor(CovidDataNJ$cases_by_Oct, CovidDataNJ$avgTemp_Jan2Sep)
+corDTNJ = cor(CovidDataNJ$deaths_by_Oct, CovidDataNJ$avgTemp_Jan2Sep)
+print("Cases and avg temperature correlation")
+print(corCTNJ)
+print("Deaths and avg temperature correlation")
+print(corDTNJ)
+print("###############################################################")
+
+print('####################### Cases-Deaths Correlation ##################')
+corCDNJVec <-c();
+for (i in 1:num_counties){
+  ctn = nj_counties[which(nj_counties$county == counties[i]),];
+  new_cases <-c(); #Empty vector to contain conseq case diff
+  new_deaths <-c();
+  
+  for (j in 1:length(ctn$cases)){
+    num_new_cases = ctn$cases[j+1]-ctn$cases[j];
+    num_new_deaths = ctn$deaths[j+1]-ctn$deaths[j];
+    if (is.na(num_new_cases) || is.na(num_new_deaths)) next# Make sure to skip NA
+    new_cases <- c(new_cases, num_new_cases);
+    new_deaths <- c(new_deaths, num_new_deaths);
+  }
+  corCDNJ = cor(new_cases, new_deaths);
+  corCDNJVec <-c(corCDNJVec, corCDNJ);
+}
+CDcorData = data.frame(county = counties, CDcor = corCDNJVec)
+CDcorDataTable = setDT(CDcorData)
+print("Correlation between cases and deaths per county")
+print(CDcorDataTable)
+barplot(CDcorDataTable$CDcor,  names.arg=CDcorDataTable$county,  las=2, main="Cor of # of cases and # of deaths per county" )
+#For lollipop plot instread:
+# ggplot(CDcorData, aes(x=county, y=CDcor)) +
+#   geom_point() +
+#   geom_segment( aes(x=county, xend=county, y=0, yend=CDcor))
+print("###############################################################")
+
+
+print('################################################################')
+print('####################### TASK III ################################')
+print('################################################################')
+
+print('####################### Reliability & Survivial anlysis ###################')
+Time = seq(1,242)
+deaths = as.integer(new_deaths[1:242])
+deaths[deaths<0] <- 0 #get rid of all negatives
+SurvData = data.frame(days = Time, deaths = deaths)
+deaths_surv <-c();
+Time_surv <-c();
+for (i in 1:length(deaths)){
+  if (deaths[i] > 1){ #Stretch vectors to have 1 as an event(died) and 0 as survived
+    deaths_surv <-c(deaths_surv, rep(1, deaths[i]))
+    Time_surv <-c(Time_surv, rep(Time[i], deaths[i]))
+  }else{
+    deaths_surv <-c(deaths_surv, deaths[i])
+    Time_surv <-c(Time_surv, Time[i])
+  }
+}
+SurvDataStrectched = data.frame(days = Time_surv, deaths = deaths_surv)
+fit <- survfit(Surv(Time_surv, deaths_surv) ~ 1)
+print(fit)
+plot(fit, main="Survival Plot", xlab="time (days)", ylab="S(t)")
+plot(fit, cumhaz=TRUE, main="Cumulative Hazard", xlab="time (days)", ylab="H(t)")
+
+print("Data found/calculated")
+CovidDataNJ
