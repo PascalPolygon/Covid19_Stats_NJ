@@ -13,7 +13,10 @@ library("data.table")
 library(survival)
 library(tinytex)
 
-setwd(getwd())
+
+# dir = getwd
+dir = '/home/pascal/math_prj_exp/src' #Change this to your working directory
+setwd(dir)
 
 # Loading the data
 cov19State = read.table("../data/us-states.csv",sep = ',',header=T)
